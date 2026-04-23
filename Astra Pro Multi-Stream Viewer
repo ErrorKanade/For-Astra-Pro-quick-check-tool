@@ -1,0 +1,74 @@
+# -*- coding: utf-8 -*-
+import cv2
+import numpy as np
+import os
+import sys
+from openni import openni2
+
+REDIST_PATH = r"C:\Users\Administrator\Desktop\astra\OpenNI_2.3.0.86_202210111950_4c8f5aa4_beta6_windows\Win64-Release\tools\Redist"
+
+def start():
+    if not os.path.exists(REDIST_PATH):
+        print(f"路径错误: {REDIST_PATH}")
+        return
+
+    os.chdir(REDIST_PATH)
+    openni2.initialize(REDIST_PATH)
+    
+    try:
+        dev = openni2.Device.open_any()
+        print("Astra 设备连接成功！")
+
+        depth_stream = dev.create_depth_stream()
+        ir_stream = dev.create_ir_stream()
+        
+        depth_stream.set_mirroring_enabled(False)
+        ir_stream.set_mirroring_enabled(False)
+        
+        depth_stream.start()
+        ir_stream.start()
+
+        # RGB 摄像头通常是系统默认的摄像头，索引可能是0或1，具体取决于你的设备。这里假设是1，如果不对请调整。
+        cap_rgb = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+
+        while True:
+            d_frame = depth_stream.read_frame()
+            d_data = np.ndarray((d_frame.height, d_frame.width), dtype=np.uint16, buffer=d_frame.get_buffer_as_uint16())
+        
+            depth_data = d_data 
+            
+            depth_vis = cv2.applyColorMap(cv2.convertScaleAbs(depth_data, alpha=0.03), cv2.COLORMAP_BONE)
+
+            i_frame = ir_stream.read_frame()
+            ir_data = np.ndarray((i_frame.height, i_frame.width), dtype=np.uint16, buffer=i_frame.get_buffer_as_uint16())
+            ir_vis = cv2.cvtColor(cv2.convertScaleAbs(ir_data, alpha=0.5), cv2.COLOR_GRAY2BGR)
+
+            ret, rgb_frame = cap_rgb.read()
+            if ret:
+                rgb_frame = cv2.resize(rgb_frame, (640, 480))
+                rgb_vis = rgb_frame
+            else:
+                rgb_vis = np.zeros((480, 640, 3), dtype=np.uint8)
+
+            pc_vis = cv2.applyColorMap(cv2.convertScaleAbs(depth_data, alpha=0.1), cv2.COLORMAP_JET)
+
+            top = np.hstack((rgb_vis, depth_vis))
+            bottom = np.hstack((ir_vis, pc_vis))
+            combined = np.vstack((top, bottom))
+
+            cv2.imshow("Astra Pro Mirror Fixed", cv2.resize(combined, (0,0), fx=0.8, fy=0.8))
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+    except Exception as e:
+        print(f"运行异常: {e}")
+    finally:
+        depth_stream.stop()
+        ir_stream.stop()
+        cap_rgb.release()
+        openni2.unload()
+        cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    start()
